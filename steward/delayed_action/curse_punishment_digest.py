@@ -37,7 +37,7 @@ class CursePunishmentDigestDelayedAction(DelayedAction):
             if not entries:
                 continue
 
-            text = format_curse_debt_report(entries)
+            text = format_curse_debt_report(entries, mention_users=False)
             await context.bot.send_message(chat_id, text)
 
 

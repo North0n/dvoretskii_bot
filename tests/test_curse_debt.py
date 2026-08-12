@@ -8,6 +8,7 @@ from steward.data.models.curse import (
     CursePunishmentDebt,
     CursePunishmentDay,
 )
+from steward.data.models.user import User
 from steward.delayed_action.context import DelayedActionContext
 from steward.delayed_action.curse_punishment_digest import (
     CurseInterestDelayedAction,
@@ -23,7 +24,7 @@ from steward.helpers.curse_debt import (
     today_msk,
 )
 from steward.metrics.base import MetricSample
-from tests.conftest import DEFAULT_USER_ID, make_repository
+from tests.conftest import CHAT_ID, DEFAULT_USER_ID, make_repository
 
 
 def test_accrues_debt_only_for_selected_punishment_day():
@@ -283,6 +284,39 @@ async def test_digest_action_does_not_apply_interest_before_reporting():
 
     assert repo.db.curse_punishment_debts[0].punishment_count == 100
     assert repo.db.curse_punishment_debts[0].last_interest_applied_date == yesterday
+
+
+async def test_digest_action_wraps_user_tags_in_monospace():
+    repo = make_repository()
+    repo.db.users = [User(id=DEFAULT_USER_ID, username="test_user", chat_ids=[CHAT_ID])]
+    repo.db.curse_participants = [
+        CurseParticipant(
+            user_id=DEFAULT_USER_ID,
+            subscribed_at=datetime(2026, 5, 30, tzinfo=timezone.utc),
+            source_chat_ids=[CHAT_ID],
+        )
+    ]
+    repo.db.curse_punishments = [CursePunishment(id=1, coeff=10, title="приседаний")]
+    repo.db.curse_punishment_debts = [
+        CursePunishmentDebt(
+            id=1,
+            user_id=DEFAULT_USER_ID,
+            rule_id=1,
+            punishment_count=10,
+            last_interest_applied_date="2026-05-30",
+        )
+    ]
+    bot = MagicMock(send_message=AsyncMock())
+    action = CursePunishmentDigestDelayedAction(
+        generator=ConstantGenerator(start=datetime.now(timezone.utc), period=date.resolution)
+    )
+
+    await action.execute(DelayedActionContext(repo, bot, MagicMock(), MagicMock()))
+
+    bot.send_message.assert_awaited_once_with(
+        CHAT_ID,
+        "Наказания на сегодня:\n\n`@test_user`\nприседаний: 10",
+    )
 
 
 async def test_interest_action_applies_interest():
